@@ -207,7 +207,8 @@ static void read_from_io(MicroCLI_t * ctx)
             break;
 
         // Handle escape sequence
-        if( buffer[ctx->input.len - 2] == ESC &&
+        if( ctx->input.len > 1 &&
+            buffer[ctx->input.len - 2] == ESC &&
             buffer[ctx->input.len - 1] == SEQ ) {
 
             // Handle the special character
@@ -256,8 +257,7 @@ static void read_from_io(MicroCLI_t * ctx)
             buffer[ctx->input.len] = 0;
         } else {
             // Echo back if not an escape sequence
-            if( buffer[ctx->input.len] != ESC &&
-                buffer[ctx->input.len - 1] != ESC )
+            if( ctx->input.len < 1 || (buffer[ctx->input.len] != ESC && buffer[ctx->input.len - 1] != ESC) )
                 ctx->cfg.io.printf("%c", buffer[ctx->input.len]);
             
             ctx->input.len++;
