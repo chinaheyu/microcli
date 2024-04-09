@@ -8,9 +8,10 @@
 // Special characters:
 enum {
     ESC = 27,
-    SEQ = 91,
     UP_ARROW = 65,
     DOWN_ARROW = 66,
+    SEQ = 91,
+    DEL = 127
 };
 
 static void insert_spaces(MicroCLI_t * ctx, int num)
@@ -71,7 +72,7 @@ static inline void save_input_to_history(MicroCLI_t * ctx)
         assert(ctx);
         assert(ctx->historyHead < MICRICLI_MAX_HISTORY && ctx->historyTail < MICRICLI_MAX_HISTORY); // Memory overflow?
         assert(ctx->input.len <= MAX_CLI_INPUT_LEN); // Input overflow?
-        assert(ctx->input.buffer[ctx->input.len-1] == 0); // Null terminated?
+        assert(ctx->input.buffer[ctx->input.len] == 0); // Null terminated?
         
         // Abort if there is no data to save
         if(ctx->input.len <= 1)
@@ -83,6 +84,7 @@ static inline void save_input_to_history(MicroCLI_t * ctx)
             ctx->historyHead = (ctx->historyHead + 1) % MICRICLI_MAX_HISTORY;
         strcpy(ctx->history[ctx->historyTail], ctx->input.buffer);
         ctx->historyEntry = ctx->historyTail;
+        ctx->historySelected = false;
     #endif
 }
 
@@ -149,6 +151,9 @@ void handle_char(MicroCLI_t * ctx, char ch)
         if (ctx->input.len > 1 &&
             buffer[ctx->input.len - 2] == ESC &&
             buffer[ctx->input.len - 1] == SEQ) {
+            // Clear the sequence from the input buffer
+            buffer[--ctx->input.len] = 0;
+            buffer[--ctx->input.len] = 0;
 
             // Handle the special character
             switch (ch) {
@@ -177,23 +182,22 @@ void handle_char(MicroCLI_t * ctx, char ch)
                         // Reset back to input buffer
                         ctx->historySelected = false;
                         clear_prompt(ctx);
-                        ctx->cfg.printf(ctx->input.buffer);
+                        memset(&ctx->input, 0, sizeof(ctx->input));
                     }
                     break;
                 default:
                     break;
             }
-            if (ctx->historySelected)
+            if (ctx->historySelected) {
                 print_history_entry(ctx);
-
-            // Clear the sequence from the input buffer
-            buffer[--ctx->input.len] = 0;
-            buffer[--ctx->input.len] = 0;
+                strcpy(ctx->input.buffer, ctx->history[ctx->historyEntry]);
+                ctx->input.len = strnlen(ctx->history[ctx->historyEntry], MAX_CLI_INPUT_LEN);
+            }
             return;
         }
 
         // Handle backspace
-        if (ch == '\b') {
+        if (ch == '\b' || ch == DEL) {
             if (ctx->input.len > 0) {
                 // Overwrite prev char from screen
                 ctx->cfg.printf("\b \b");
@@ -203,12 +207,12 @@ void handle_char(MicroCLI_t * ctx, char ch)
             // Erase from buffer
             buffer[ctx->input.len] = 0;
         } else {
-            // Echo back if not an escape sequence
-            if (ch != ESC && (ctx->input.len < 1 || buffer[ctx->input.len - 1] != ESC))
-                ctx->cfg.printf("%c", ch);
-
-            if (ctx->input.len < MAX_CLI_INPUT_LEN)
+            if (ctx->input.len < MAX_CLI_INPUT_LEN) {
+                // Echo back if not an escape sequence
+                if (ch != ESC && (ctx->input.len < 1 || buffer[ctx->input.len - 1] != ESC))
+                    ctx->cfg.printf("%c", ch);
                 ctx->input.buffer[ctx->input.len++] = ch;
+            }
         }
     }
 }
@@ -217,15 +221,8 @@ void execute_command(MicroCLI_t * ctx) {
     assert(ctx);
     assert(ctx->cfg.printf);
     if(ctx->input.ready) {
-        // Was a historical entry selected?
-        if(ctx->historySelected) {
-            strcpy(ctx->input.buffer, ctx->history[ctx->historyEntry]);
-            ctx->input.len = strnlen(ctx->history[ctx->historyEntry], MAX_CLI_INPUT_LEN);
-        }
-        ctx->historySelected = false;
-
         // Replace escape character with null terminator
-        ctx->input.buffer[ctx->input.len++] = 0;
+        ctx->input.buffer[ctx->input.len] = 0;
         ctx->cfg.printf("\r\n");
 
         // Command entry is complete. Input buffer is ready to be processed

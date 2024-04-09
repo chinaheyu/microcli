@@ -1,7 +1,22 @@
 #include "microcli.h"
 #include <stdio.h>
+#ifdef _WIN32
 #include <conio.h>
-
+#else
+#include <termios.h>
+int getch()
+{
+    struct termios old, current;
+    tcgetattr(0, &old);
+    current = old;
+    current.c_lflag &= ~ICANON;
+    current.c_lflag &= ~ECHO;
+    tcsetattr(0, TCSANOW, &current);
+    int ch = getchar();
+    tcsetattr(0, TCSANOW, &old);
+    return ch;
+}
+#endif
 
 #define CMD_ENTRY(fn, help) {fn, #fn, help}
 
@@ -20,7 +35,6 @@ const MicroCLICfg_t dbgCfg = {
     .cmdTable = cmdTable,
     .cmdCount = sizeof(cmdTable)/sizeof(cmdTable[0]),
 };
-
 
 int poke(MicroCLI_t * ctx, const char * args)
 {
