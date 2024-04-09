@@ -1,6 +1,13 @@
 #ifndef _MICROCLI_H_
 #define _MICROCLI_H_
 
+#ifdef __cplusplus
+#ifndef _Static_assert
+    #define _Static_assert static_assert
+#endif
+extern "C" {
+#endif
+
 #include "microcli_config.h"
 #include "microcli_verbosity.h"
 #include <stdbool.h>
@@ -85,5 +92,9 @@ int      microcli_help(MicroCLI_t * ctx);
 #define  microcli_warn(ctx, fmt, ...) MICROCLI_WARN(ctx, fmt, ##__VA_ARGS__)
 #define   microcli_log(ctx, fmt, ...) MICROCLI_LOG(ctx, fmt, ##__VA_ARGS__)
 #define microcli_debug(ctx, fmt, ...) MICROCLI_DEBUG(ctx, fmt, ##__VA_ARGS__)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _MICROCLI_H_ */
