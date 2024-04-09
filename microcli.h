@@ -76,10 +76,10 @@ _Static_assert(MICRICLI_MAX_HISTORY >= 2, "At least 2 history!");
 // Control
 void microcli_init(MicroCLI_t * ctx, const MicroCLICfg_t * cfg);
 void microcli_set_verbosity(MicroCLI_t * ctx, int verbosity);
-void execute_command(MicroCLI_t * ctx);
+int execute_command(MicroCLI_t * ctx);
 
 // Input
-void handle_char(MicroCLI_t * ctx, char ch);
+int handle_char(MicroCLI_t * ctx, char ch);
 
 // Output
 int microcli_banner(MicroCLI_t * ctx);

@@ -1,6 +1,5 @@
 #include "microcli.h"
 #include <stdbool.h>
-// #include <stdarg.h>
 #include <string.h>
 #include <assert.h>
 
@@ -132,7 +131,7 @@ static inline void print_history_entry( MicroCLI_t * ctx )
     ctx->cfg.printf("%s", ctx->history[ctx->historyEntry]);
 }
 
-void handle_char(MicroCLI_t * ctx, char ch)
+int handle_char(MicroCLI_t * ctx, char ch)
 {
     assert(ctx);
     assert(ctx->cfg.printf);
@@ -144,7 +143,7 @@ void handle_char(MicroCLI_t * ctx, char ch)
         // Handle termination characters
         if( ch == 0 || ch == '\n' || ch == '\r' ) {
             ctx->input.ready = true;
-            return;
+            return 0;
         }
 
         // Handle escape sequence
@@ -193,7 +192,7 @@ void handle_char(MicroCLI_t * ctx, char ch)
                 strcpy(ctx->input.buffer, ctx->history[ctx->historyEntry]);
                 ctx->input.len = strnlen(ctx->history[ctx->historyEntry], MAX_CLI_INPUT_LEN);
             }
-            return;
+            return 0;
         }
 
         // Handle backspace
@@ -212,36 +211,47 @@ void handle_char(MicroCLI_t * ctx, char ch)
                 if (ch != ESC && (ctx->input.len < 1 || buffer[ctx->input.len - 1] != ESC))
                     ctx->cfg.printf("%c", ch);
                 ctx->input.buffer[ctx->input.len++] = ch;
-            }
+            } else
+                return MICROCLI_ERR_OUT_OF_BOUNDS;
         }
     }
 }
 
-void execute_command(MicroCLI_t * ctx) {
+int execute_command(MicroCLI_t * ctx) {
     assert(ctx);
     assert(ctx->cfg.printf);
-    if(ctx->input.ready) {
-        // Replace escape character with null terminator
-        ctx->input.buffer[ctx->input.len] = 0;
-        ctx->cfg.printf("\r\n");
+    if (!ctx->input.ready)
+        return MICROCLI_ERR_BUSY;
 
-        // Command entry is complete. Input buffer is ready to be processed
-        assert(ctx->input.len <= MAX_CLI_INPUT_LEN);
-        save_input_to_history(ctx);
+    // Replace escape character with null terminator
+    ctx->input.buffer[ctx->input.len] = 0;
+    ctx->cfg.printf("\r\n");
 
-        // Lookup and run command (if found)
-        int cmdIdx = lookup_command(ctx);
-        const char * args = ctx->input.buffer + cmd_len(ctx->input.buffer) + 1;
+    // Command entry is complete. Input buffer is ready to be processed
+    assert(ctx->input.len <= MAX_CLI_INPUT_LEN);
+    save_input_to_history(ctx);
+
+    // Lookup and run command (if found)
+    int cmdRet;
+    int cmdIdx = lookup_command(ctx);
+    if (cmdIdx == MICROCLI_ERR_CMD_NOT_FOUND)
+        cmdRet = MICROCLI_ERR_CMD_NOT_FOUND;
+    else {
         if(cmdIdx >= 0 && cmdIdx < ctx->cfg.cmdCount) {
-            ctx->cfg.cmdTable[cmdIdx].cmd(ctx, args);
             ctx->cfg.printf("\r\n");
-        }
-
-        memset(&ctx->input, 0, sizeof(ctx->input));
-
-        // Reset prompt
-        ctx->prompted = false;
+            const char * args = ctx->input.buffer + cmd_len(ctx->input.buffer) + 1;
+            cmdRet = ctx->cfg.cmdTable[cmdIdx].cmd(ctx, args);
+        } else
+            cmdRet = MICROCLI_ERR_OUT_OF_BOUNDS;
     }
+
+    // Reset input state.
+    memset(&ctx->input, 0, sizeof(ctx->input));
+
+    // Reset prompt
+    ctx->prompted = false;
+
+    return cmdRet;
 }
 
 void microcli_init(MicroCLI_t * ctx, const MicroCLICfg_t * cfg)

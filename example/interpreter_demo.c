@@ -73,6 +73,8 @@ int main(int argc, char* argv[])
             handle_char(&dbg, ch);
         }
 
-        execute_command(&dbg);
+        if (execute_command(&dbg) == MICROCLI_ERR_CMD_NOT_FOUND) {
+            microcli_warn(&dbg, "Command not found!\r\n");
+        }
     }
 }
