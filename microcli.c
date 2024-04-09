@@ -19,7 +19,7 @@ static void insert_spaces(MicroCLI_t * ctx, int num)
     assert(num > 0);
     
     for(int i = 0; i < num; i++) {
-        ctx->cfg.io.printf(" ");
+        ctx->cfg.printf(" ");
     }
 }
 
@@ -69,83 +69,32 @@ static inline void save_input_to_history(MicroCLI_t * ctx)
 {
     #ifdef MICROCLI_ENABLE_HISTORY
         assert(ctx);
-        assert(ctx->historySize <= MICRICLI_MAX_HISTORY_MEM); // Memory overflow?
-        assert((ctx->history != 0) != (ctx->historySize == 0)); // Memory leak?
+        assert(ctx->historyHead < MICRICLI_MAX_HISTORY && ctx->historyTail < MICRICLI_MAX_HISTORY); // Memory overflow?
         assert(ctx->input.len <= MAX_CLI_INPUT_LEN); // Input overflow?
         assert(ctx->input.buffer[ctx->input.len-1] == 0); // Null terminated?
-
-        static const unsigned int NODE_SIZE = sizeof(MicroCLIHistoryEntry_t);
-
-        // Abort if this entry is too large to possibly be stored
-        if(ctx->input.len > MICRICLI_MAX_HISTORY_MEM - NODE_SIZE)
-            return;
         
         // Abort if there is no data to save
         if(ctx->input.len <= 1)
             return;
-        
-        // Seek last history entry
-        MicroCLIHistoryEntry_t * last = ctx->history;
-        while(last && last->older) {
-            assert(last != last->older); // Circular reference?
-            last = last->older;
-        }
-
-        // Calculate new history size
-        ctx->historySize += NODE_SIZE + ctx->input.len;
-
-        // Free older entries, to prevent exceeding history max mem
-        while(last && ctx->historySize > MICRICLI_MAX_HISTORY_MEM) {
-            MicroCLIHistoryEntry_t * this = last;
-
-            // Trim the last node from the list
-            last = last->newer;
-            if(last)
-                last->older = 0;
-
-            // Free the allocated string memory within this node
-            if(this && this->str) {
-                MICROCLI_FREE(this->str);
-                ctx->historySize -= strnlen(this->str, MAX_CLI_INPUT_LEN) + 1;
-            }
-
-            // Free the memory of this node itself
-            MICROCLI_FREE(this);
-            ctx->historySize -= NODE_SIZE;
-
-            // Is the list empty?
-            if(ctx->history == this)
-                ctx->history = 0;
-        }
-
-        // Allocate memory for new list node
-        MicroCLIHistoryEntry_t * newEntry = MICROCLI_MALLOC(NODE_SIZE);
-        assert(newEntry); // Malloc failure?
-
-        // Insert new list node at front of list
-        newEntry->newer = 0; // There is no newer entry
-        newEntry->older = ctx->history;
-        ctx->history = newEntry;
-        if(newEntry->older)
-            newEntry->older->newer = newEntry;
-
-        // Allocate memory for the input string
-        newEntry->str = MICROCLI_MALLOC(ctx->input.len);
-        assert(newEntry->str); // Malloc failure?
 
         // Save the input string
-        strcpy(newEntry->str, ctx->input.buffer);
+        ctx->historyTail = (ctx->historyTail + 1) % MICRICLI_MAX_HISTORY;
+        if(ctx->historyTail == ctx->historyHead)
+            ctx->historyHead = (ctx->historyHead + 1) % MICRICLI_MAX_HISTORY;
+        strcpy(ctx->history[ctx->historyTail], ctx->input.buffer);
+        ctx->historyEntry = ctx->historyTail;
     #endif
 }
 
-static inline void prompt_for_input(MicroCLI_t * ctx)
+inline void prompt_for_input(MicroCLI_t * ctx)
 {
     assert(ctx);
-    assert(ctx->cfg.io.printf);
+    assert(ctx->cfg.printf);
+    assert(ctx->cfg.promptText);
 
     // Only display prompt once per command
     if(ctx->prompted == false) {
-        ctx->cfg.io.printf(ctx->cfg.promptText);
+        ctx->cfg.printf(ctx->cfg.promptText);
         ctx->prompted = true;
     }
 }
@@ -153,103 +102,101 @@ static inline void prompt_for_input(MicroCLI_t * ctx)
 static inline void clear_line(MicroCLI_t * ctx)
 {
     assert(ctx);
-    assert(ctx->cfg.io.printf);
+    assert(ctx->cfg.printf);
     
-    ctx->cfg.io.printf("\r%c%c%c", ESC, SEQ, 'K');
+    ctx->cfg.printf("\r%c%c%c", ESC, SEQ, 'K');
 }
 
 static inline void clear_prompt(MicroCLI_t * ctx)
 {
     assert(ctx);
-    assert(ctx->cfg.io.printf);
+    assert(ctx->cfg.printf);
     assert(ctx->cfg.promptText);
     
     clear_line(ctx);
-    ctx->cfg.io.printf("\r%s", ctx->cfg.promptText);
+    ctx->cfg.printf("\r%s", ctx->cfg.promptText);
 }
 
-static inline void print_history_entry( MicroCLI_t * ctx,
-                                        MicroCLIHistoryEntry_t * entry)
+static inline void print_history_entry( MicroCLI_t * ctx )
 {
     assert(ctx);
-    assert(ctx->cfg.io.printf);
-    assert(entry);
-    assert(entry->str);
+    assert(ctx->cfg.printf);
+    assert(ctx->historyEntry < MICRICLI_MAX_HISTORY);
 
     // Clear the line
     clear_prompt(ctx);
 
     // Print the history entry text
-    ctx->cfg.io.printf("%s", entry->str);
+    ctx->cfg.printf("%s", ctx->history[ctx->historyEntry]);
 }
 
-static void read_from_io(MicroCLI_t * ctx)
+void handle_char(MicroCLI_t * ctx, char ch)
 {
     assert(ctx);
-    assert(ctx->cfg.io.printf);
-    assert(ctx->cfg.io.getchar);
+    assert(ctx->cfg.printf);
 
     // Convenience mapping
-    char * buffer = ctx->input.buffer;
+    char *buffer = ctx->input.buffer;
 
-    // Current history entry
-    static MicroCLIHistoryEntry_t * hist = 0;
-
-    // Loop through all available data
-    while(ctx->input.len < (sizeof(ctx->input.buffer) - 1)) {
-        // Get next character
-        buffer[ctx->input.len] = ctx->cfg.io.getchar();
-
+    if (!ctx->input.ready) {
         // Handle termination characters
-        if( buffer[ctx->input.len] == 0 ||     // No more data
-            buffer[ctx->input.len] == '\n' ||  // New line
-            buffer[ctx->input.len] == '\r' )   // Carriage return
-            break;
+        if( ch == 0 || ch == '\n' || ch == '\r' ) {
+            ctx->input.ready = true;
+            return;
+        }
 
         // Handle escape sequence
-        if( ctx->input.len > 1 &&
+        if (ctx->input.len > 1 &&
             buffer[ctx->input.len - 2] == ESC &&
-            buffer[ctx->input.len - 1] == SEQ ) {
+            buffer[ctx->input.len - 1] == SEQ) {
 
             // Handle the special character
-            bool printFromHistory = false;
-            switch(buffer[ctx->input.len]) {
+            switch (ch) {
                 case UP_ARROW:
-                    if(hist && hist->older) {
-                        hist = hist->older;
-                        printFromHistory = true;
-                    } else if(!hist && ctx->history) {
-                        hist = ctx->history;
-                        printFromHistory = true;
+                    if (!ctx->historySelected) {
+                        ctx->historyEntry = ctx->historyTail;
+                        ctx->historySelected = true;
+                    } else if (ctx->historyHead < ctx->historyTail && ctx->historyEntry > ctx->historyHead) {
+                        ctx->historyEntry--;
+                        ctx->historySelected = true;
+                    } else if (ctx->historyHead > ctx->historyTail &&
+                               (ctx->historyEntry <= ctx->historyTail || ctx->historyEntry > ctx->historyHead)) {
+                        ctx->historyEntry = ctx->historyEntry > 0 ? ctx->historyEntry - 1 : MICRICLI_MAX_HISTORY - 1;
+                        ctx->historySelected = true;
                     }
                     break;
                 case DOWN_ARROW:
-                    if(hist) {
-                        hist = hist->newer;
-                        if(hist) {
-                            printFromHistory = true;
-                        } else {
-                            // Reset back to input buffer
-                            clear_prompt(ctx);
-                            ctx->cfg.io.printf(ctx->input.buffer);
-                        }
+                    if (ctx->historyHead < ctx->historyTail && ctx->historyEntry < ctx->historyTail) {
+                        ctx->historyEntry++;
+                        ctx->historySelected = true;
+                    } else if (ctx->historyHead > ctx->historyTail &&
+                               (ctx->historyEntry < ctx->historyTail || ctx->historyEntry >= ctx->historyHead)) {
+                        ctx->historyEntry = (ctx->historyEntry + 1) % MICRICLI_MAX_HISTORY;
+                        ctx->historySelected = true;
+                    } else {
+                        // Reset back to input buffer
+                        ctx->historySelected = false;
+                        clear_prompt(ctx);
+                        ctx->cfg.printf(ctx->input.buffer);
                     }
                     break;
+                default:
+                    break;
             }
-            if(printFromHistory && hist->str)
-                print_history_entry(ctx, hist);
+            if (ctx->historySelected)
+                print_history_entry(ctx);
 
             // Clear the sequence from the input buffer
-            buffer[ctx->input.len--] = 0;
-            buffer[ctx->input.len--] = 0;
-            buffer[ctx->input.len--] = 0;
+            buffer[--ctx->input.len] = 0;
+            buffer[--ctx->input.len] = 0;
+            return;
         }
 
         // Handle backspace
-        if(buffer[ctx->input.len] == '\b') {
-            if(ctx->input.len > 0) {
+        if (ch == '\b') {
+            if (ctx->input.len > 0) {
                 // Overwrite prev char from screen
-                ctx->cfg.io.printf("\b \b");
+                ctx->cfg.printf("\b \b");
                 ctx->input.len--;
             }
 
@@ -257,41 +204,46 @@ static void read_from_io(MicroCLI_t * ctx)
             buffer[ctx->input.len] = 0;
         } else {
             // Echo back if not an escape sequence
-            if( ctx->input.len < 1 || (buffer[ctx->input.len] != ESC && buffer[ctx->input.len - 1] != ESC) )
-                ctx->cfg.io.printf("%c", buffer[ctx->input.len]);
-            
-            ctx->input.len++;
+            if (ch != ESC && (ctx->input.len < 1 || buffer[ctx->input.len - 1] != ESC))
+                ctx->cfg.printf("%c", ch);
+
+            if (ctx->input.len < MAX_CLI_INPUT_LEN)
+                ctx->input.buffer[ctx->input.len++] = ch;
         }
     }
-    assert(ctx->input.len < MAX_CLI_INPUT_LEN);
+}
 
-    // If buffer is full, delete last char to make room for more input
-    if(ctx->input.len == sizeof(ctx->input.buffer)) {
-        ctx->cfg.io.printf("\b");
-        ctx->input.len--;
-        buffer[ctx->input.len] = 0;
-    }
-    assert(ctx->input.len < MAX_CLI_INPUT_LEN);
-
-    // No more data to process. Wait for more data.
-    if(buffer[ctx->input.len] == 0) {
-        ctx->input.ready = false;
-    } else {
+void execute_command(MicroCLI_t * ctx) {
+    assert(ctx);
+    assert(ctx->cfg.printf);
+    if(ctx->input.ready) {
         // Was a historical entry selected?
-        if(hist && hist->str) {
-            strcpy(ctx->input.buffer, hist->str);
-            ctx->input.len = strnlen(hist->str, MAX_CLI_INPUT_LEN);
+        if(ctx->historySelected) {
+            strcpy(ctx->input.buffer, ctx->history[ctx->historyEntry]);
+            ctx->input.len = strnlen(ctx->history[ctx->historyEntry], MAX_CLI_INPUT_LEN);
         }
-        hist = 0;
+        ctx->historySelected = false;
 
         // Replace escape character with null terminator
-        buffer[ctx->input.len++] = 0;
-        ctx->cfg.io.printf("\n\r");
+        ctx->input.buffer[ctx->input.len++] = 0;
+        ctx->cfg.printf("\r\n");
 
         // Command entry is complete. Input buffer is ready to be processed
-        ctx->input.ready = true;
-        assert(ctx->input.len < MAX_CLI_INPUT_LEN);
+        assert(ctx->input.len <= MAX_CLI_INPUT_LEN);
         save_input_to_history(ctx);
+
+        // Lookup and run command (if found)
+        int cmdIdx = lookup_command(ctx);
+        const char * args = ctx->input.buffer + cmd_len(ctx->input.buffer) + 1;
+        if(cmdIdx >= 0 && cmdIdx < ctx->cfg.cmdCount) {
+            ctx->cfg.cmdTable[cmdIdx].cmd(ctx, args);
+            ctx->cfg.printf("\r\n");
+        }
+
+        memset(&ctx->input, 0, sizeof(ctx->input));
+
+        // Reset prompt
+        ctx->prompted = false;
     }
 }
 
@@ -299,8 +251,7 @@ void microcli_init(MicroCLI_t * ctx, const MicroCLICfg_t * cfg)
 {
     assert(ctx);
     assert(cfg);
-    assert(cfg->io.printf);
-    assert(cfg->io.getchar);
+    assert(cfg->printf);
     assert(cfg->bannerText);
     assert(cfg->promptText);
     assert(cfg->cmdTable);
@@ -318,97 +269,28 @@ void microcli_set_verbosity(MicroCLI_t * ctx, int verbosity)
     ctx->verbosity = verbosity;
 }
 
-void microcli_interpreter_tick(MicroCLI_t * ctx)
-{
-    assert(ctx);
-    assert(ctx->cfg.io.printf);
-    assert(ctx->cfg.io.getchar);
-    assert(ctx->cfg.promptText);
-
-    // If input buffer does not contain a command, read more data from IO
-    if(!ctx->input.ready) {
-        // Prompt user for input
-        prompt_for_input(ctx);
-
-        // Read user input from IO
-        read_from_io(ctx);
-    }
-    
-    // If the input buffer contains a command, process it.
-    if(ctx->input.ready) {
-        // Lookup and run command (if found)
-        int cmdIdx = lookup_command(ctx);
-        const char * args = ctx->input.buffer + cmd_len(ctx->input.buffer) + 1;
-        if(cmdIdx >= 0 && cmdIdx < ctx->cfg.cmdCount) {
-            ctx->cfg.cmdTable[cmdIdx].cmd(ctx, args);
-            ctx->cfg.io.printf("\n\r");
-        }
-
-        // Reset prompt
-        ctx->prompted = false;
-    }
-
-    // Reset the prompt, after processing a command
-    if(ctx->input.ready) {
-        memset(&ctx->input, 0, sizeof(ctx->input));
-        ctx->prompted = false;
-    }
-}
-
-int microcli_interpret_string(MicroCLI_t * ctx, const char * str, bool print)
-{
-    assert(ctx);
-    assert(ctx->cfg.io.printf);
-    assert(str);
-
-    if(strlen(str) > sizeof(ctx->input.buffer))
-        return MICROCLI_ERR_OVERFLOW;
-
-    if( (ctx->input.len > 0) || ctx->input.ready )
-        return MICROCLI_ERR_BUSY;
-    
-    // Copy string into the command input buffer
-    strcpy(ctx->input.buffer, str);
-    ctx->input.len = strlen(str);
-    ctx->input.ready = true;
-    
-    // Optionally print the command to the cli output
-    if(print) {
-        // Display the prompt, before printing the command
-        prompt_for_input(ctx);
-        
-        // Print the command to the console
-        ctx->cfg.io.printf("%s\n\r", str);
-    }
-
-    // Tick the interpreter to process the command
-    microcli_interpreter_tick(ctx);
-
-    return 0;
-}
-
 int microcli_banner(MicroCLI_t * ctx)
 {
     assert(ctx);
     assert(ctx->cfg.bannerText);
-    assert(ctx->cfg.io.printf);
+    assert(ctx->cfg.printf);
     
-    return ctx->cfg.io.printf(ctx->cfg.bannerText);
+    return ctx->cfg.printf(ctx->cfg.bannerText);
 }
 
 int microcli_help(MicroCLI_t * ctx)
 {
     assert(ctx);
-    assert(ctx->cfg.io.printf);
+    assert(ctx->cfg.printf);
     assert(ctx->cfg.cmdTable);
     assert(ctx->cfg.cmdCount >= 0);
 
     int printLen = 0;
     for(int i = 0; i < ctx->cfg.cmdCount; i++) {
-        int cmdLen = ctx->cfg.io.printf("%s", ctx->cfg.cmdTable[i].name);
+        int cmdLen = ctx->cfg.printf("%s", ctx->cfg.cmdTable[i].name);
         insert_spaces(ctx, MAX_CLI_CMD_LEN - cmdLen);
         printLen += MAX_CLI_CMD_LEN;
-        printLen += ctx->cfg.io.printf("%s\n\r", ctx->cfg.cmdTable[i].help);
+        printLen += ctx->cfg.printf("%s\n\r", ctx->cfg.cmdTable[i].help);
     }
     
     return printLen;

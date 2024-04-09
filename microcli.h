@@ -26,9 +26,7 @@ typedef enum {
 } MicroCLIErr_t;
 _Static_assert(MICROCLI_ERR_MAX < 0, "Some MicroCLI error codes are non-negative!");
 
-
 // Typedefs
-typedef struct microcliHistoryEntry MicroCLIHistoryEntry_t;
 typedef struct microcliCmdEntry     MicroCLICmdEntry_t;
 typedef struct microcliCfg          MicroCLICfg_t;
 typedef struct microcliCtx          MicroCLI_t;
@@ -46,17 +44,8 @@ struct microcliCmdEntry {
     const char * help;
 };
 
-struct microcliHistoryEntry {
-    char * str;
-    MicroCLIHistoryEntry_t * newer;
-    MicroCLIHistoryEntry_t * older;
-};
-
 struct microcliCfg {
-    struct {
-        Printf_t printf;
-        Getchar_t getchar; // Note: should return < 0 when no more data available
-    } io;
+    Printf_t printf;
     const char * bannerText;
     const char * promptText;
     const MicroCLICmdEntry_t * cmdTable;
@@ -72,25 +61,33 @@ struct microcliCtx {
         unsigned int len;
         bool ready;
     } input;
-    MicroCLIHistoryEntry_t * history;
-    unsigned int historySize;
+#ifdef MICROCLI_ENABLE_HISTORY
+    char history[MICRICLI_MAX_HISTORY][MAX_CLI_INPUT_LEN + 1];
+    unsigned int historyHead;
+    unsigned int historyTail;
+    unsigned int historyEntry;
+    bool historySelected;
+#endif
 };
-
+#ifdef MICROCLI_ENABLE_HISTORY
+_Static_assert(MICRICLI_MAX_HISTORY >= 2, "At least 2 history!");
+#endif
 
 // Control
-void             microcli_init(MicroCLI_t * ctx, const MicroCLICfg_t * cfg);
-void    microcli_set_verbosity(MicroCLI_t * ctx, int verbosity);
-void microcli_interpreter_tick(MicroCLI_t * ctx);
+void microcli_init(MicroCLI_t * ctx, const MicroCLICfg_t * cfg);
+void microcli_set_verbosity(MicroCLI_t * ctx, int verbosity);
+void execute_command(MicroCLI_t * ctx);
 
 // Input
-int microcli_interpret_string(MicroCLI_t * ctx, const char * str, bool print);
+void handle_char(MicroCLI_t * ctx, char ch);
 
 // Output
-int    microcli_banner(MicroCLI_t * ctx);
-int      microcli_help(MicroCLI_t * ctx);
+int microcli_banner(MicroCLI_t * ctx);
+int microcli_help(MicroCLI_t * ctx);
+void prompt_for_input(MicroCLI_t * ctx);
 #define microcli_error(ctx, fmt, ...) MICROCLI_ERROR(ctx, fmt, ##__VA_ARGS__)
-#define  microcli_warn(ctx, fmt, ...) MICROCLI_WARN(ctx, fmt, ##__VA_ARGS__)
-#define   microcli_log(ctx, fmt, ...) MICROCLI_LOG(ctx, fmt, ##__VA_ARGS__)
+#define microcli_warn(ctx, fmt, ...) MICROCLI_WARN(ctx, fmt, ##__VA_ARGS__)
+#define microcli_log(ctx, fmt, ...) MICROCLI_LOG(ctx, fmt, ##__VA_ARGS__)
 #define microcli_debug(ctx, fmt, ...) MICROCLI_DEBUG(ctx, fmt, ##__VA_ARGS__)
 
 #ifdef __cplusplus

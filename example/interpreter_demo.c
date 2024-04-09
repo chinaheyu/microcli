@@ -1,5 +1,6 @@
 #include "microcli.h"
 #include <stdio.h>
+#include <conio.h>
 
 
 #define CMD_ENTRY(fn, help) {fn, #fn, help}
@@ -13,12 +14,11 @@ const MicroCLICmdEntry_t cmdTable[] = {
     CMD_ENTRY(poke, "Poke the poor circuit"),
 };
 const MicroCLICfg_t dbgCfg = {
+    .printf = printf,
     .bannerText = "\r\n\n\n\nMicroCLI Interpreter Demo\r\n",
     .promptText = "> ",
     .cmdTable = cmdTable,
     .cmdCount = sizeof(cmdTable)/sizeof(cmdTable[0]),
-    .io.printf = printf,
-    .io.getchar = getchar,
 };
 
 
@@ -33,10 +33,32 @@ int help(MicroCLI_t * ctx, const char * args)
     return microcli_help(ctx);
 }
 
-int main(void)
+int main(int argc, char* argv[])
 {
     microcli_init(&dbg, &dbgCfg);
     microcli_banner(&dbg);
-    while(1)
-        microcli_interpreter_tick(&dbg);
+    while(true) {
+        prompt_for_input(&dbg);
+        int ch = getch();
+
+        if (ch == 224) {
+            handle_char(&dbg, '\033');
+            handle_char(&dbg, '[');
+            switch (getch()) {
+                case 72:
+                    handle_char(&dbg, 'A');
+                    break;
+                case 80:
+                    handle_char(&dbg, 'B');
+                    break;
+                default:
+                    handle_char(&dbg, ch);
+                    break;
+            }
+        } else {
+            handle_char(&dbg, ch);
+        }
+
+        execute_command(&dbg);
+    }
 }

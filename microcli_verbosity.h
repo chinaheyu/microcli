@@ -20,7 +20,7 @@
 #define PRINT_HELPER(v, ctx, fmt, ... )\
 {\
     if((ctx)->verbosity >= v) {\
-        (ctx)->cfg.io.printf(fmt, ##__VA_ARGS__);\
+        (ctx)->cfg.printf(fmt, ##__VA_ARGS__);\
     }\
 }
 
