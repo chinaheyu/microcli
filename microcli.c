@@ -23,7 +23,7 @@ static void insert_spaces(MicroCLI_t * ctx, int num)
     }
 }
 
-static inline int cmd_len(const char * cmdStr)
+static int cmd_len(const char * cmdStr)
 {
     assert(cmdStr);
 
@@ -65,7 +65,7 @@ static int lookup_command(MicroCLI_t * ctx)
     return MICROCLI_ERR_CMD_NOT_FOUND;
 }
 
-static inline void save_input_to_history(MicroCLI_t * ctx)
+static void save_input_to_history(MicroCLI_t * ctx)
 {
     #ifdef MICROCLI_ENABLE_HISTORY
         assert(ctx);
@@ -87,7 +87,7 @@ static inline void save_input_to_history(MicroCLI_t * ctx)
     #endif
 }
 
-inline void prompt_for_input(MicroCLI_t * ctx)
+void microcli_prompt_for_input(MicroCLI_t * ctx)
 {
     assert(ctx);
     assert(ctx->cfg.printf);
@@ -100,7 +100,7 @@ inline void prompt_for_input(MicroCLI_t * ctx)
     }
 }
 
-static inline void clear_line(MicroCLI_t * ctx)
+static void clear_line(MicroCLI_t * ctx)
 {
     assert(ctx);
     assert(ctx->cfg.printf);
@@ -108,7 +108,7 @@ static inline void clear_line(MicroCLI_t * ctx)
     ctx->cfg.printf("\r%c%c%c", ESC, SEQ, 'K');
 }
 
-static inline void clear_prompt(MicroCLI_t * ctx)
+static void clear_prompt(MicroCLI_t * ctx)
 {
     assert(ctx);
     assert(ctx->cfg.printf);
@@ -118,7 +118,7 @@ static inline void clear_prompt(MicroCLI_t * ctx)
     ctx->cfg.printf("\r%s", ctx->cfg.promptText);
 }
 
-static inline void print_history_entry( MicroCLI_t * ctx )
+static void print_history_entry( MicroCLI_t * ctx )
 {
     assert(ctx);
     assert(ctx->cfg.printf);
@@ -131,7 +131,7 @@ static inline void print_history_entry( MicroCLI_t * ctx )
     ctx->cfg.printf("%s", ctx->history[ctx->historyEntry]);
 }
 
-int handle_char(MicroCLI_t * ctx, char ch)
+int microcli_handle_char(MicroCLI_t * ctx, char ch)
 {
     assert(ctx);
     assert(ctx->cfg.printf);
@@ -217,7 +217,7 @@ int handle_char(MicroCLI_t * ctx, char ch)
     }
 }
 
-int execute_command(MicroCLI_t * ctx) {
+int microcli_execute_command(MicroCLI_t * ctx) {
     assert(ctx);
     assert(ctx->cfg.printf);
     if (!ctx->input.ready)
@@ -239,7 +239,7 @@ int execute_command(MicroCLI_t * ctx) {
     else {
         if(cmdIdx >= 0 && cmdIdx < ctx->cfg.cmdCount) {
             ctx->cfg.printf("\r\n");
-            const char * args = ctx->input.buffer + cmd_len(ctx->input.buffer) + 1;
+            char * args = ctx->input.buffer + cmd_len(ctx->input.buffer) + 1;
             cmdRet = ctx->cfg.cmdTable[cmdIdx].cmd(ctx, args);
         } else
             cmdRet = MICROCLI_ERR_OUT_OF_BOUNDS;

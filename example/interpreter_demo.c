@@ -20,8 +20,8 @@ int getch()
 
 #define CMD_ENTRY(fn, help) {fn, #fn, help}
 
-int poke(MicroCLI_t * ctx, const char * args);
-int help(MicroCLI_t * ctx, const char * args);
+int poke(MicroCLI_t * ctx, char * args);
+int help(MicroCLI_t * ctx, char * args);
 
 MicroCLI_t dbg;
 const MicroCLICmdEntry_t cmdTable[] = {
@@ -36,13 +36,13 @@ const MicroCLICfg_t dbgCfg = {
     .cmdCount = sizeof(cmdTable)/sizeof(cmdTable[0]),
 };
 
-int poke(MicroCLI_t * ctx, const char * args)
+int poke(MicroCLI_t * ctx, char * args)
 {
     microcli_log(ctx, "ouch!\n\r");
     return 0;
 }
 
-int help(MicroCLI_t * ctx, const char * args)
+int help(MicroCLI_t * ctx, char * args)
 {
     return microcli_help(ctx);
 }
@@ -52,28 +52,28 @@ int main(int argc, char* argv[])
     microcli_init(&dbg, &dbgCfg);
     microcli_banner(&dbg);
     while(true) {
-        prompt_for_input(&dbg);
+        microcli_prompt_for_input(&dbg);
         int ch = getch();
 
         if (ch == 224) {
-            handle_char(&dbg, '\033');
-            handle_char(&dbg, '[');
+            microcli_handle_char(&dbg, '\033');
+            microcli_handle_char(&dbg, '[');
             switch (getch()) {
                 case 72:
-                    handle_char(&dbg, 'A');
+                    microcli_handle_char(&dbg, 'A');
                     break;
                 case 80:
-                    handle_char(&dbg, 'B');
+                    microcli_handle_char(&dbg, 'B');
                     break;
                 default:
-                    handle_char(&dbg, ch);
+                    microcli_handle_char(&dbg, ch);
                     break;
             }
         } else {
-            handle_char(&dbg, ch);
+            microcli_handle_char(&dbg, ch);
         }
 
-        if (execute_command(&dbg) == MICROCLI_ERR_CMD_NOT_FOUND) {
+        if (microcli_execute_command(&dbg) == MICROCLI_ERR_CMD_NOT_FOUND) {
             microcli_warn(&dbg, "Command not found!\r\n");
         }
     }
