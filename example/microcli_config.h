@@ -1,8 +1,6 @@
 #ifndef _MICROCLI_CONFIG_H_
 #define _MICROCLI_CONFIG_H_
 
-#include <stdlib.h>
-
 #define DEFAULT_VERBOSITY           VERBOSITY_LEVEL_LOG
 #define MAX_ALLOWED_VERBOSITY       VERBOSITY_LEVEL_MAX
 
