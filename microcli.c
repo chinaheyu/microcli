@@ -54,43 +54,45 @@ void microcli_prompt_for_input(MicroCLI_t * ctx)
 
 int microcli_handle_char(MicroCLI_t * ctx, char ch)
 {
+    // There is already a pending command
+    if (ctx->input.ready)
+        return MICROCLI_ERR_BUSY;
+
     // Convenience mapping
     char *buffer = ctx->input.buffer;
 
-    if (!ctx->input.ready) {
-        // Handle termination characters
-        if(ch == 0 || ch == '\n' || ch == '\r') {
-            // New line
-            ctx->cfg.printf(EOL);
-            // Command entry is complete. Input buffer is ready to be processed
-            ctx->input.ready = true;
+    // Handle termination characters
+    if(ch == 0 || ch == '\n' || ch == '\r') {
+        // New line
+        ctx->cfg.printf(EOL);
+        // Command entry is complete. Input buffer is ready to be processed
+        ctx->input.ready = true;
+        return MICROCLI_ERR_SUCCESS;
+    }
+
+    // Handle backspace
+    if (ch == '\b' || ch == 0x7f) {
+        if (ctx->input.len > 0) {
+            // Overwrite prev char from screen
+            ctx->cfg.printf("\b \b");
+            ctx->input.len--;
+        }
+
+        // Erase from buffer
+        buffer[ctx->input.len] = 0;
+        return MICROCLI_ERR_SUCCESS;
+    }
+
+    // Handle normal character (printable ascii)
+    if (ch >= 0x20 && ch <= 0x7e) {
+        if (ctx->input.len < MICROCLI_MAX_INPUT_LEN) {
+            // Save to input buffer
+            ctx->input.buffer[ctx->input.len++] = ch;
+            // Echo back
+            ctx->cfg.printf("%c", ch);
             return MICROCLI_ERR_SUCCESS;
-        }
-
-        // Handle backspace
-        if (ch == '\b' || ch == 0x7f) {
-            if (ctx->input.len > 0) {
-                // Overwrite prev char from screen
-                ctx->cfg.printf("\b \b");
-                ctx->input.len--;
-            }
-
-            // Erase from buffer
-            buffer[ctx->input.len] = 0;
-            return MICROCLI_ERR_SUCCESS;
-        }
-
-        // Handle normal character (printable ascii)
-        if (ch >= 0x20 && ch <= 0x7e) {
-            if (ctx->input.len < MICROCLI_MAX_INPUT_LEN) {
-                // Save to input buffer
-                ctx->input.buffer[ctx->input.len++] = ch;
-                // Echo back
-                ctx->cfg.printf("%c", ch);
-                return MICROCLI_ERR_SUCCESS;
-            } else
-                return MICROCLI_ERR_BUFFER_FULL;
-        }
+        } else
+            return MICROCLI_ERR_BUFFER_FULL;
     }
 
     // Invalid character
