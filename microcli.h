@@ -27,7 +27,6 @@ typedef int (*MicroCLICmd_t)(MicroCLI_t * ctx, char * args);
 
 // I/O function prototypes
 typedef int (*Printf_t)(const char * fmt, ...);
-typedef int (*Getchar_t)(void);
 
 struct microcliCmdEntry {
     MicroCLICmd_t cmd;
