@@ -19,9 +19,9 @@ int getch()
 }
 #endif
 
-int poke(MicroCLI_t * ctx, char * args);
-int echo(MicroCLI_t * ctx, char * args);
-int help(MicroCLI_t * ctx, char * args);
+int poke(MicroCLI_t *ctx, char *args);
+int echo(MicroCLI_t *ctx, char *args);
+int help(MicroCLI_t *ctx, char *args);
 
 MicroCLI_t dbg;
 const MicroCLICmdEntry_t cmdTable[] = {
@@ -37,13 +37,13 @@ const MicroCLICfg_t dbgCfg = {
     .cmdCount = sizeof(cmdTable)/sizeof(cmdTable[0]),
 };
 
-int poke(MicroCLI_t * ctx, char * args)
+int poke(MicroCLI_t *ctx, char *args)
 {
     microcli_printf(ctx, "ouch!\n\r");
     return 0;
 }
 
-int echo(MicroCLI_t * ctx, char * args)
+int echo(MicroCLI_t *ctx, char *args)
 {
     int cnt = 0;
     char *pch = strtok(args," ");
@@ -55,7 +55,7 @@ int echo(MicroCLI_t * ctx, char * args)
     return 0;
 }
 
-int help(MicroCLI_t * ctx, char * args)
+int help(MicroCLI_t *ctx, char *args)
 {
     return microcli_help(ctx);
 }
@@ -67,12 +67,6 @@ int main(int argc, char* argv[])
     for(;;) {
         microcli_prompt_for_input(&dbg);
         int ch = getch();
-
-        // Drop Windows key scan code
-        if (ch == 224) {
-            getch();
-            continue;
-        }
 
         microcli_handle_char(&dbg, (char)ch);
 
