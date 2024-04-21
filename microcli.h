@@ -6,7 +6,6 @@ extern "C" {
 #endif
 
 #include "microcli_config.h"
-#include "microcli_verbosity.h"
 #include <stdbool.h>
 
 
@@ -14,11 +13,8 @@ extern "C" {
 typedef enum {
     MICROCLI_ERR_UNKNOWN = -128,
     MICROCLI_ERR_BUSY,
-    MICROCLI_ERR_BAD_ARG,
-    MICROCLI_ERR_OVERFLOW,
-    MICROCLI_ERR_OUT_OF_BOUNDS,
+    MICROCLI_ERR_BUFFER_FULL,
     MICROCLI_ERR_CMD_NOT_FOUND,
-    MICROCLI_ERR_NO_DATA,
     MICROCLI_ERR_MAX
 } MicroCLIErr_t;
 
@@ -45,20 +41,19 @@ struct microcliCfg {
     const char * bannerText;
     const char * promptText;
     const MicroCLICmdEntry_t * cmdTable;
-    unsigned int cmdCount;
+    unsigned short cmdCount;
 };
 
 struct microcliCtx {
     MicroCLICfg_t cfg;
-    int verbosity;
     bool prompted;
     struct {
-        char buffer[MAX_CLI_INPUT_LEN + 1];
+        char buffer[MICROCLI_MAX_INPUT_LEN + 1];
         unsigned int len;
         bool ready;
     } input;
 #ifdef MICROCLI_ENABLE_HISTORY
-    char history[MICRICLI_MAX_HISTORY][MAX_CLI_INPUT_LEN + 1];
+    char history[MICRICLI_MAX_HISTORY][MICROCLI_MAX_INPUT_LEN + 1];
     unsigned int historyHead;
     unsigned int historyTail;
     unsigned int historyEntry;
@@ -68,7 +63,6 @@ struct microcliCtx {
 
 // Control
 void microcli_init(MicroCLI_t * ctx, const MicroCLICfg_t * cfg);
-void microcli_set_verbosity(MicroCLI_t * ctx, int verbosity);
 int microcli_execute_command(MicroCLI_t * ctx);
 
 // Input
@@ -78,10 +72,7 @@ int microcli_handle_char(MicroCLI_t * ctx, char ch);
 int microcli_banner(MicroCLI_t * ctx);
 int microcli_help(MicroCLI_t * ctx);
 void microcli_prompt_for_input(MicroCLI_t * ctx);
-#define microcli_error(ctx, fmt, ...) MICROCLI_ERROR(ctx, fmt, ##__VA_ARGS__)
-#define microcli_warn(ctx, fmt, ...) MICROCLI_WARN(ctx, fmt, ##__VA_ARGS__)
-#define microcli_log(ctx, fmt, ...) MICROCLI_LOG(ctx, fmt, ##__VA_ARGS__)
-#define microcli_debug(ctx, fmt, ...) MICROCLI_DEBUG(ctx, fmt, ##__VA_ARGS__)
+#define microcli_printf(ctx, fmt, ...) ((ctx)->cfg.printf(fmt, ##__VA_ARGS__))
 
 // Helper
 #define CMD_ENTRY(fn, help) {fn, #fn, help}

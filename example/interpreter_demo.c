@@ -1,5 +1,6 @@
 #include "microcli.h"
 #include <stdio.h>
+#include <string.h>
 #ifdef _WIN32
 #include <conio.h>
 #else
@@ -18,15 +19,15 @@ int getch()
 }
 #endif
 
-#define CMD_ENTRY(fn, help) {fn, #fn, help}
-
 int poke(MicroCLI_t * ctx, char * args);
+int echo(MicroCLI_t * ctx, char * args);
 int help(MicroCLI_t * ctx, char * args);
 
 MicroCLI_t dbg;
 const MicroCLICmdEntry_t cmdTable[] = {
-    CMD_ENTRY(help, "Print this help message"),
     CMD_ENTRY(poke, "Poke the poor circuit"),
+    CMD_ENTRY(echo, "Echo arguments"),
+    CMD_ENTRY(help, "Print this help message")
 };
 const MicroCLICfg_t dbgCfg = {
     .printf = printf,
@@ -38,7 +39,19 @@ const MicroCLICfg_t dbgCfg = {
 
 int poke(MicroCLI_t * ctx, char * args)
 {
-    microcli_log(ctx, "ouch!\n\r");
+    microcli_printf(ctx, "ouch!\n\r");
+    return 0;
+}
+
+int echo(MicroCLI_t * ctx, char * args)
+{
+    int cnt = 0;
+    char *pch = strtok(args," ");
+    while (pch != NULL)
+    {
+        microcli_printf(ctx, "%d: %s\n", cnt++, pch);
+        pch = strtok(NULL, " ");
+    }
     return 0;
 }
 
@@ -56,6 +69,7 @@ int main(int argc, char* argv[])
         int ch = getch();
 
         if (ch == 224) {
+            // Translate Windows key code into CSI
             microcli_handle_char(&dbg, '\033');
             microcli_handle_char(&dbg, '[');
             switch (getch()) {
@@ -74,7 +88,7 @@ int main(int argc, char* argv[])
         }
 
         if (microcli_execute_command(&dbg) == MICROCLI_ERR_CMD_NOT_FOUND) {
-            microcli_warn(&dbg, "Command not found!\r\n");
+            microcli_printf(&dbg, "Command not found!\r\n");
         }
     }
 }

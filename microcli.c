@@ -1,98 +1,94 @@
 #include "microcli.h"
-#include <stdbool.h>
 #include <string.h>
-#include <assert.h>
-
 
 // Special characters:
-enum {
-    ESC = 27,
-    UP_ARROW = 65,
-    DOWN_ARROW = 66,
-    SEQ = 91,
-    DEL = 127
-};
+#define ESC 0x1b
+#define UP_ARROW 0x41
+#define DOWN_ARROW 0x42
+#define SEQ 0x5b
+#define DEL 0x7f
 
-static void insert_spaces(MicroCLI_t * ctx, int num)
+// End of line:
+#define EOL "\r\n"
+
+static void insert_spaces(MicroCLI_t * ctx, unsigned int num)
 {
-    assert(ctx);
-    assert(num > 0);
-    
-    for(int i = 0; i < num; i++) {
+    for(unsigned int i = 0; i < num; i++) {
         ctx->cfg.printf(" ");
     }
 }
 
-static int cmd_len(const char * cmdStr)
+static unsigned int cmd_len(const char * cmdStr)
 {
-    assert(cmdStr);
-
-    int inLen = strlen(cmdStr);
-    int i = 0;
+    unsigned int inLen = strlen(cmdStr);
+    unsigned int i;
     for(i = 0; i < inLen; i++) {
         if(cmdStr[i] == ' ')
             break;
     }
-
     return i;
 }
 
 static int lookup_command(MicroCLI_t * ctx)
 {
-    assert(ctx);
-    assert(ctx->cfg.cmdTable);
-    assert(ctx->cfg.cmdCount >= 0);
-
     // Loop through each possible command
     int i = ctx->cfg.cmdCount;
     while(i-- > 0) {
-        // Compare the input command (delimited by a space) to
-        // the command in the table
+        // Compare the input command (delimited by a space) to the command in the table
         bool diff = false;
-        int j = strlen(ctx->cfg.cmdTable[i].name);
-        if(j > cmd_len(ctx->input.buffer))
+        unsigned int j = strlen(ctx->cfg.cmdTable[i].name);
+        if(j != cmd_len(ctx->input.buffer))
             continue;
-        
         while(j-- > 0 && !diff) {
             if(ctx->input.buffer[j] != ctx->cfg.cmdTable[i].name[j])
                 diff = true;
         }
-
         if(!diff)
             return i;
     }
-
     return MICROCLI_ERR_CMD_NOT_FOUND;
 }
 
+#ifdef MICROCLI_ENABLE_HISTORY
 static void save_input_to_history(MicroCLI_t * ctx)
 {
-    #ifdef MICROCLI_ENABLE_HISTORY
-        assert(ctx);
-        assert(ctx->historyHead < MICRICLI_MAX_HISTORY && ctx->historyTail < MICRICLI_MAX_HISTORY); // Memory overflow?
-        assert(ctx->input.len <= MAX_CLI_INPUT_LEN); // Input overflow?
-        assert(ctx->input.buffer[ctx->input.len] == 0); // Null terminated?
-        
-        // Abort if there is no data to save
-        if(ctx->input.len <= 1)
-            return;
-
-        // Save the input string
-        ctx->historyTail = (ctx->historyTail + 1) % MICRICLI_MAX_HISTORY;
-        if(ctx->historyTail == ctx->historyHead)
-            ctx->historyHead = (ctx->historyHead + 1) % MICRICLI_MAX_HISTORY;
-        strcpy(ctx->history[ctx->historyTail], ctx->input.buffer);
-        ctx->historyEntry = ctx->historyTail;
-        ctx->historySelected = false;
-    #endif
+    // Abort if there is no data to save
+    if(ctx->input.len <= 1)
+        return;
+    // Save the input string
+    ctx->historyTail = (ctx->historyTail + 1) % MICRICLI_MAX_HISTORY;
+    if(ctx->historyTail == ctx->historyHead)
+        ctx->historyHead = (ctx->historyHead + 1) % MICRICLI_MAX_HISTORY;
+    strcpy(ctx->history[ctx->historyTail], ctx->input.buffer);
+    ctx->historyEntry = ctx->historyTail;
+    ctx->historySelected = false;
 }
+#endif
+
+static void clear_line(MicroCLI_t * ctx)
+{
+    ctx->cfg.printf("\033[K");
+}
+
+static void clear_prompt(MicroCLI_t * ctx)
+{
+    clear_line(ctx);
+    ctx->cfg.printf("\r%s", ctx->cfg.promptText);
+}
+
+#ifdef MICROCLI_ENABLE_HISTORY
+static void print_history_entry(MicroCLI_t * ctx)
+{
+    // Clear the line
+    clear_prompt(ctx);
+
+    // Print the history entry text
+    ctx->cfg.printf("%s", ctx->history[ctx->historyEntry]);
+}
+#endif
 
 void microcli_prompt_for_input(MicroCLI_t * ctx)
 {
-    assert(ctx);
-    assert(ctx->cfg.printf);
-    assert(ctx->cfg.promptText);
-
     // Only display prompt once per command
     if(ctx->prompted == false) {
         ctx->cfg.printf(ctx->cfg.promptText);
@@ -100,48 +96,14 @@ void microcli_prompt_for_input(MicroCLI_t * ctx)
     }
 }
 
-static void clear_line(MicroCLI_t * ctx)
-{
-    assert(ctx);
-    assert(ctx->cfg.printf);
-    
-    ctx->cfg.printf("\r%c%c%c", ESC, SEQ, 'K');
-}
-
-static void clear_prompt(MicroCLI_t * ctx)
-{
-    assert(ctx);
-    assert(ctx->cfg.printf);
-    assert(ctx->cfg.promptText);
-    
-    clear_line(ctx);
-    ctx->cfg.printf("\r%s", ctx->cfg.promptText);
-}
-
-static void print_history_entry( MicroCLI_t * ctx )
-{
-    assert(ctx);
-    assert(ctx->cfg.printf);
-    assert(ctx->historyEntry < MICRICLI_MAX_HISTORY);
-
-    // Clear the line
-    clear_prompt(ctx);
-
-    // Print the history entry text
-    ctx->cfg.printf("%s", ctx->history[ctx->historyEntry]);
-}
-
 int microcli_handle_char(MicroCLI_t * ctx, char ch)
 {
-    assert(ctx);
-    assert(ctx->cfg.printf);
-
     // Convenience mapping
     char *buffer = ctx->input.buffer;
 
     if (!ctx->input.ready) {
         // Handle termination characters
-        if( ch == 0 || ch == '\n' || ch == '\r' ) {
+        if(ch == 0 || ch == '\n' || ch == '\r') {
             ctx->input.ready = true;
             return 0;
         }
@@ -157,6 +119,7 @@ int microcli_handle_char(MicroCLI_t * ctx, char ch)
             // Handle the special character
             switch (ch) {
                 case UP_ARROW:
+#ifdef MICROCLI_ENABLE_HISTORY
                     if (!ctx->historySelected) {
                         ctx->historyEntry = ctx->historyTail;
                         ctx->historySelected = true;
@@ -184,14 +147,18 @@ int microcli_handle_char(MicroCLI_t * ctx, char ch)
                         memset(&ctx->input, 0, sizeof(ctx->input));
                     }
                     break;
+#endif
                 default:
+                    // Unimplemented control sequences
                     break;
             }
+#ifdef MICROCLI_ENABLE_HISTORY
             if (ctx->historySelected) {
                 print_history_entry(ctx);
                 strcpy(ctx->input.buffer, ctx->history[ctx->historyEntry]);
-                ctx->input.len = strnlen(ctx->history[ctx->historyEntry], MAX_CLI_INPUT_LEN);
+                ctx->input.len = strnlen(ctx->history[ctx->historyEntry], MICROCLI_MAX_INPUT_LEN);
             }
+#endif
             return 0;
         }
 
@@ -206,30 +173,32 @@ int microcli_handle_char(MicroCLI_t * ctx, char ch)
             // Erase from buffer
             buffer[ctx->input.len] = 0;
         } else {
-            if (ctx->input.len < MAX_CLI_INPUT_LEN) {
+            if (ctx->input.len < MICROCLI_MAX_INPUT_LEN) {
                 // Echo back if not an escape sequence
                 if (ch != ESC && (ctx->input.len < 1 || buffer[ctx->input.len - 1] != ESC))
                     ctx->cfg.printf("%c", ch);
                 ctx->input.buffer[ctx->input.len++] = ch;
             } else
-                return MICROCLI_ERR_OUT_OF_BOUNDS;
+                return MICROCLI_ERR_BUFFER_FULL;
         }
     }
+    return 0;
 }
 
 int microcli_execute_command(MicroCLI_t * ctx) {
-    assert(ctx);
-    assert(ctx->cfg.printf);
     if (!ctx->input.ready)
         return MICROCLI_ERR_BUSY;
 
+    // New line
+    ctx->cfg.printf(EOL);
+
     // Replace escape character with null terminator
     ctx->input.buffer[ctx->input.len] = 0;
-    ctx->cfg.printf("\r\n");
 
     // Command entry is complete. Input buffer is ready to be processed
-    assert(ctx->input.len <= MAX_CLI_INPUT_LEN);
+#ifdef MICROCLI_ENABLE_HISTORY
     save_input_to_history(ctx);
+#endif
 
     // Lookup and run command (if found)
     int cmdRet;
@@ -238,11 +207,11 @@ int microcli_execute_command(MicroCLI_t * ctx) {
         cmdRet = MICROCLI_ERR_CMD_NOT_FOUND;
     else {
         if(cmdIdx >= 0 && cmdIdx < ctx->cfg.cmdCount) {
-            ctx->cfg.printf("\r\n");
+            ctx->cfg.printf(EOL);
             char * args = ctx->input.buffer + cmd_len(ctx->input.buffer) + 1;
             cmdRet = ctx->cfg.cmdTable[cmdIdx].cmd(ctx, args);
         } else
-            cmdRet = MICROCLI_ERR_OUT_OF_BOUNDS;
+            cmdRet = MICROCLI_ERR_CMD_NOT_FOUND;
     }
 
     // Reset input state.
@@ -256,49 +225,23 @@ int microcli_execute_command(MicroCLI_t * ctx) {
 
 void microcli_init(MicroCLI_t * ctx, const MicroCLICfg_t * cfg)
 {
-    assert(ctx);
-    assert(cfg);
-    assert(cfg->printf);
-    assert(cfg->bannerText);
-    assert(cfg->promptText);
-    assert(cfg->cmdTable);
-
-    *ctx = (MicroCLI_t){0};
-
+    memset(ctx, 0, sizeof(MicroCLI_t));
     ctx->cfg = *cfg;
-    ctx->verbosity = DEFAULT_VERBOSITY;
-}
-
-void microcli_set_verbosity(MicroCLI_t * ctx, int verbosity)
-{
-    assert(ctx);
-    assert(verbosity <= VERBOSITY_LEVEL_MAX);
-    ctx->verbosity = verbosity;
 }
 
 int microcli_banner(MicroCLI_t * ctx)
 {
-    assert(ctx);
-    assert(ctx->cfg.bannerText);
-    assert(ctx->cfg.printf);
-    
     return ctx->cfg.printf(ctx->cfg.bannerText);
 }
 
 int microcli_help(MicroCLI_t * ctx)
 {
-    assert(ctx);
-    assert(ctx->cfg.printf);
-    assert(ctx->cfg.cmdTable);
-    assert(ctx->cfg.cmdCount >= 0);
-
     int printLen = 0;
     for(int i = 0; i < ctx->cfg.cmdCount; i++) {
         int cmdLen = ctx->cfg.printf("%s", ctx->cfg.cmdTable[i].name);
-        insert_spaces(ctx, MAX_CLI_CMD_LEN - cmdLen);
-        printLen += MAX_CLI_CMD_LEN;
-        printLen += ctx->cfg.printf("%s\n\r", ctx->cfg.cmdTable[i].help);
+        insert_spaces(ctx, MICROCLI_MAX_CMD_LEN - cmdLen);
+        printLen += MICROCLI_MAX_CMD_LEN;
+        printLen += ctx->cfg.printf("%s" EOL, ctx->cfg.cmdTable[i].help);
     }
-    
     return printLen;
 }
