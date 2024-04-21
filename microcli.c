@@ -121,7 +121,6 @@ int microcli_execute_command(MicroCLI_t * ctx) {
         cmdRet = MICROCLI_ERR_CMD_NOT_FOUND;
     else {
         if(cmdIdx >= 0 && cmdIdx < ctx->cfg.cmdCount) {
-            ctx->cfg.printf(EOL);
             char * args = ctx->input.buffer + cmd_len(ctx->input.buffer) + 1;
             cmdRet = ctx->cfg.cmdTable[cmdIdx].cmd(ctx, args);
         } else
