@@ -3,8 +3,6 @@
 
 // Special characters:
 #define ESC 0x1b
-#define UP_ARROW 0x41
-#define DOWN_ARROW 0x42
 #define SEQ 0x5b
 #define DEL 0x7f
 
@@ -49,44 +47,6 @@ static int lookup_command(MicroCLI_t * ctx)
     return MICROCLI_ERR_CMD_NOT_FOUND;
 }
 
-#ifdef MICROCLI_ENABLE_HISTORY
-static void save_input_to_history(MicroCLI_t * ctx)
-{
-    // Abort if there is no data to save
-    if(ctx->input.len <= 1)
-        return;
-    // Save the input string
-    ctx->historyTail = (ctx->historyTail + 1) % MICRICLI_MAX_HISTORY;
-    if(ctx->historyTail == ctx->historyHead)
-        ctx->historyHead = (ctx->historyHead + 1) % MICRICLI_MAX_HISTORY;
-    strcpy(ctx->history[ctx->historyTail], ctx->input.buffer);
-    ctx->historyEntry = ctx->historyTail;
-    ctx->historySelected = false;
-}
-#endif
-
-static void clear_line(MicroCLI_t * ctx)
-{
-    ctx->cfg.printf("\033[K");
-}
-
-static void clear_prompt(MicroCLI_t * ctx)
-{
-    clear_line(ctx);
-    ctx->cfg.printf("\r%s", ctx->cfg.promptText);
-}
-
-#ifdef MICROCLI_ENABLE_HISTORY
-static void print_history_entry(MicroCLI_t * ctx)
-{
-    // Clear the line
-    clear_prompt(ctx);
-
-    // Print the history entry text
-    ctx->cfg.printf("%s", ctx->history[ctx->historyEntry]);
-}
-#endif
-
 void microcli_prompt_for_input(MicroCLI_t * ctx)
 {
     // Only display prompt once per command
@@ -112,53 +72,9 @@ int microcli_handle_char(MicroCLI_t * ctx, char ch)
         if (ctx->input.len > 1 &&
             buffer[ctx->input.len - 2] == ESC &&
             buffer[ctx->input.len - 1] == SEQ) {
-            // Clear the sequence from the input buffer
+            // Drop the sequence from the input buffer
             buffer[--ctx->input.len] = 0;
             buffer[--ctx->input.len] = 0;
-
-            // Handle the special character
-            switch (ch) {
-                case UP_ARROW:
-#ifdef MICROCLI_ENABLE_HISTORY
-                    if (!ctx->historySelected) {
-                        ctx->historyEntry = ctx->historyTail;
-                        ctx->historySelected = true;
-                    } else if (ctx->historyHead < ctx->historyTail && ctx->historyEntry > ctx->historyHead) {
-                        ctx->historyEntry--;
-                        ctx->historySelected = true;
-                    } else if (ctx->historyHead > ctx->historyTail &&
-                               (ctx->historyEntry <= ctx->historyTail || ctx->historyEntry > ctx->historyHead)) {
-                        ctx->historyEntry = ctx->historyEntry > 0 ? ctx->historyEntry - 1 : MICRICLI_MAX_HISTORY - 1;
-                        ctx->historySelected = true;
-                    }
-                    break;
-                case DOWN_ARROW:
-                    if (ctx->historyHead < ctx->historyTail && ctx->historyEntry < ctx->historyTail) {
-                        ctx->historyEntry++;
-                        ctx->historySelected = true;
-                    } else if (ctx->historyHead > ctx->historyTail &&
-                               (ctx->historyEntry < ctx->historyTail || ctx->historyEntry >= ctx->historyHead)) {
-                        ctx->historyEntry = (ctx->historyEntry + 1) % MICRICLI_MAX_HISTORY;
-                        ctx->historySelected = true;
-                    } else {
-                        // Reset back to input buffer
-                        ctx->historySelected = false;
-                        clear_prompt(ctx);
-                        memset(&ctx->input, 0, sizeof(ctx->input));
-                    }
-                    break;
-#endif
-                default:
-                    // Unimplemented control sequences
-                    break;
-            }
-#ifdef MICROCLI_ENABLE_HISTORY
-            if (ctx->historySelected) {
-                print_history_entry(ctx);
-                strcpy(ctx->input.buffer, ctx->history[ctx->historyEntry]);
-                ctx->input.len = strnlen(ctx->history[ctx->historyEntry], MICROCLI_MAX_INPUT_LEN);
-            }
-#endif
             return 0;
         }
 
@@ -172,15 +88,17 @@ int microcli_handle_char(MicroCLI_t * ctx, char ch)
 
             // Erase from buffer
             buffer[ctx->input.len] = 0;
-        } else {
-            if (ctx->input.len < MICROCLI_MAX_INPUT_LEN) {
-                // Echo back if not an escape sequence
-                if (ch != ESC && (ctx->input.len < 1 || buffer[ctx->input.len - 1] != ESC))
-                    ctx->cfg.printf("%c", ch);
-                ctx->input.buffer[ctx->input.len++] = ch;
-            } else
-                return MICROCLI_ERR_BUFFER_FULL;
+            return 0;
         }
+
+        // Handle normal character
+        if (ctx->input.len < MICROCLI_MAX_INPUT_LEN) {
+            // Echo back if not an escape sequence
+            if (ch != ESC && (ctx->input.len < 1 || buffer[ctx->input.len - 1] != ESC))
+                ctx->cfg.printf("%c", ch);
+            ctx->input.buffer[ctx->input.len++] = ch;
+        } else
+            return MICROCLI_ERR_BUFFER_FULL;
     }
     return 0;
 }
@@ -196,10 +114,6 @@ int microcli_execute_command(MicroCLI_t * ctx) {
     ctx->input.buffer[ctx->input.len] = 0;
 
     // Command entry is complete. Input buffer is ready to be processed
-#ifdef MICROCLI_ENABLE_HISTORY
-    save_input_to_history(ctx);
-#endif
-
     // Lookup and run command (if found)
     int cmdRet;
     int cmdIdx = lookup_command(ctx);

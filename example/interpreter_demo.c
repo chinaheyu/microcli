@@ -64,28 +64,17 @@ int main(int argc, char* argv[])
 {
     microcli_init(&dbg, &dbgCfg);
     microcli_banner(&dbg);
-    while(true) {
+    for(;;) {
         microcli_prompt_for_input(&dbg);
         int ch = getch();
 
+        // Drop Windows key scan code
         if (ch == 224) {
-            // Translate Windows key code into CSI
-            microcli_handle_char(&dbg, '\033');
-            microcli_handle_char(&dbg, '[');
-            switch (getch()) {
-                case 72:
-                    microcli_handle_char(&dbg, 'A');
-                    break;
-                case 80:
-                    microcli_handle_char(&dbg, 'B');
-                    break;
-                default:
-                    microcli_handle_char(&dbg, ch);
-                    break;
-            }
-        } else {
-            microcli_handle_char(&dbg, ch);
+            getch();
+            continue;
         }
+
+        microcli_handle_char(&dbg, (char)ch);
 
         if (microcli_execute_command(&dbg) == MICROCLI_ERR_CMD_NOT_FOUND) {
             microcli_printf(&dbg, "Command not found!\r\n");

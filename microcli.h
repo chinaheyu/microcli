@@ -8,7 +8,6 @@ extern "C" {
 #include "microcli_config.h"
 #include <stdbool.h>
 
-
 // Error codes
 typedef enum {
     MICROCLI_ERR_UNKNOWN = -128,
@@ -52,13 +51,6 @@ struct microcliCtx {
         unsigned int len;
         bool ready;
     } input;
-#ifdef MICROCLI_ENABLE_HISTORY
-    char history[MICRICLI_MAX_HISTORY][MICROCLI_MAX_INPUT_LEN + 1];
-    unsigned int historyHead;
-    unsigned int historyTail;
-    unsigned int historyEntry;
-    bool historySelected;
-#endif
 };
 
 // Control

@@ -7,10 +7,4 @@
 // Max command length
 #define MICROCLI_MAX_CMD_LEN             20
 
-// Enable history
-#define MICROCLI_ENABLE_HISTORY
-
-// Max history count (must greater than 1)
-#define MICRICLI_MAX_HISTORY        2
-
 #endif /* _MICROCLI_CONFIG_H_*/
